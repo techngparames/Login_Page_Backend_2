@@ -1,0 +1,72 @@
+// backend/routes/employeeActivity.js
+const express = require("express");
+const router = express.Router();
+const mongoose = require("mongoose");
+
+// ================= Employee Activity Schema =================
+const EmployeeActivitySchema = new mongoose.Schema({
+  employeeId: { type: String, required: true },     // removed unique: true to allow multiple records if needed
+  loginTime: { type: Date, default: null },         // stores login timestamp
+  pauseTimes: [{ type: Date }],                     // stores all pause timestamps
+  logoutTime: { type: Date, default: null },        // stores logout timestamp
+});
+
+// Model
+const EmployeeActivity = mongoose.model("EmployeeActivity", EmployeeActivitySchema);
+
+// ================= GET /activities =================
+// Fetch all employee activity records
+router.get("/activities", async (req, res) => {
+  try {
+    const activities = await EmployeeActivity.find({});
+    res.status(200).json({ success: true, activities });
+  } catch (err) {
+    console.error("Error fetching activities:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// ================= POST /action =================
+// Records login, pause, or logout for a single employee
+router.post("/action", async (req, res) => {
+  try {
+    const { employeeId, action } = req.body;
+
+    if (!employeeId || !action) {
+      return res.status(400).json({ success: false, message: "employeeId and action are required" });
+    }
+
+    // Find existing activity record for today
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    let activity = await EmployeeActivity.findOne({ employeeId, loginTime: { $gte: todayStart } });
+
+    if (!activity) {
+      activity = new EmployeeActivity({ employeeId });
+    }
+
+    const now = new Date();
+    switch (action) {
+      case "login":
+        activity.loginTime = now;
+        break;
+      case "pause":
+        activity.pauseTimes.push(now);
+        break;
+      case "logout":
+        activity.logoutTime = now;
+        break;
+      default:
+        return res.status(400).json({ success: false, message: "Invalid action" });
+    }
+
+    await activity.save();
+    res.status(200).json({ success: true, message: `Action '${action}' recorded for ${employeeId}`, activity });
+  } catch (err) {
+    console.error("Error recording action:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+module.exports = router;
